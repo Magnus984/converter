@@ -1,12 +1,14 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, UploadFile, HTTPException, status
 from api.v1.schemas.response_models import (
     StandardResponse, ErrorResponse, ErrorData, SuccessResponse)
 from docx import Document
 from pptx import Presentation
+from starlette.responses import StreamingResponse
+
 import os
 
 word_to_ppt = APIRouter(
-    prefix="/word",
+    prefix="/word_to_ppt",
     tags=["Word to PPT"],
 )
 @word_to_ppt.post(
@@ -27,7 +29,7 @@ word_to_ppt = APIRouter(
         },
     },
 )
-def convert_to_ppt(file: UploadFile):
+async def convert_to_ppt(file: UploadFile):
     """
     Convert a Word document to a PowerPoint presentation.
 
@@ -86,6 +88,43 @@ def convert_to_ppt(file: UploadFile):
             message="Conversion successful.",
             data={
                 "ppt_file": os.path.join(ppt_dir, f"{filename}.pptx")
+            }
+        )
+    except Exception as e:
+        return ErrorResponse(
+            status_code=500,
+            message="An error occurred during conversion.",
+            data=ErrorData(
+                error=str(e),
+                error_type="Internal Server Error"
+            )
+        )
+
+
+@word_to_ppt.get(
+    "/download/{file_name}",
+    )
+async def download_file(file_name: str):
+    try:
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        stripped_path = BASE_DIR.partition('api')[0]
+        ppt_dir = os.path.join(stripped_path, "ppt")
+
+        file_path = os.path.join(ppt_dir, f"{file_name}.pptx")
+
+        if not os.path.exists(file_path):
+          raise HTTPException(
+              status_code=status.HTTP_404_NOT_FOUND,
+              detail="File not found"
+          )
+        
+        file_stream = open(file_path, mode="rb")
+
+        return StreamingResponse(
+            file_stream,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={
+                "Content-Disposition": f"attachment; filename={file_name}.pptx"
             }
         )
     except Exception as e:
